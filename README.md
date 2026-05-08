@@ -57,8 +57,10 @@ Here are some sample interactions demonstrating the chatbot's ability to retriev
 
 
 ### 2. Sample Query 1: "What is KYC?"
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/0652b294-0e42-4765-a3bd-4fb23c6bc0fe" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/9262f620-e0c8-40ef-a742-32ba8f75e354" />
+
 
 
 ### 3. Sample Query 2: "What documents do I need to open an account?"
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/974890d0-3f5f-4859-8b4e-43e4585e5412" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/2e0d9b8f-3692-44b2-aa69-7aee0dab0f8f" />
+
