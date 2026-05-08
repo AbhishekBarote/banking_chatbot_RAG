@@ -1,3 +1,5 @@
 .env
 __pycache__/
 *.pyc
+.emb_cache.npy
+.emb_cache.hash

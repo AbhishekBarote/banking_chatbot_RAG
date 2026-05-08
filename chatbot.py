@@ -1,136 +1,159 @@
+"""
+Astura Banking Chatbot — Optimized Backend
+- Embedding disk cache: skips re-encoding on restarts
+- Single LLM call returns both answer + suggestions (halves latency)
+"""
+
 import json
+import hashlib
+import html as html_lib
 import numpy as np
 import google.generativeai as genai
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import warnings
-
-# Suppress warnings for cleaner CLI output
-warnings.filterwarnings("ignore")
-
 import os
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+warnings.filterwarnings("ignore")
 load_dotenv()
 
-# 1. Setup Gemini LLM using API key from environment
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY not found in environment variables. Please check your .env file.")
+    raise ValueError("GEMINI_API_KEY not found. Please check your .env file.")
 
 genai.configure(api_key=GEMINI_API_KEY)
-llm = genai.GenerativeModel('gemini-2.5-flash')
 
 
 class BankingChatbot:
-    def __init__(self, data_file='data.json'):
-        # Support running from any directory
-        data_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), data_file)
-        print("Loading Banking Chatbot...")
-        self.load_dataset(data_file)
-        
-        # 2. Setup Embeddings: Using Sentence Transformers as recommended
-        print("Loading local embedding model (Sentence Transformers)...")
-        self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
-        
-        print("Indexing dataset...")
-        self.index_dataset()
-        print("\n--- Chatbot Ready! ---")
-        print("Type 'exit' or 'quit' to stop.")
+    def __init__(self, data_file="data.json"):
+        base = os.path.dirname(os.path.abspath(__file__))
+        data_path = os.path.join(base, data_file)
 
-    def load_dataset(self, data_file):
-        """Loads the banking Q&A dataset."""
-        with open(data_file, 'r', encoding='utf-8') as f:
+        self.llm = genai.GenerativeModel("gemini-2.5-flash")
+        self._load_dataset(data_path)
+
+        # Load embedding model once
+        self.embedder = SentenceTransformer("all-MiniLM-L6-v2")
+        self._index_dataset(base)
+
+    # ── Data ──────────────────────────────────────────────────────────────────
+
+    def _load_dataset(self, path):
+        with open(path, "r", encoding="utf-8") as f:
             self.dataset = json.load(f)
-        self.questions = [item['question'] for item in self.dataset]
+        self.questions = [item["question"] for item in self.dataset]
 
-    def index_dataset(self):
-        """Converts the dataset questions into embeddings."""
-        self.question_embeddings = self.embedder.encode(self.questions)
+    def _index_dataset(self, base_dir):
+        """Encode questions with a disk cache keyed by dataset hash."""
+        cache_emb  = os.path.join(base_dir, ".emb_cache.npy")
+        cache_hash = os.path.join(base_dir, ".emb_cache.hash")
+
+        current_hash = hashlib.md5(
+            json.dumps(self.questions, sort_keys=True).encode()
+        ).hexdigest()
+
+        if os.path.exists(cache_emb) and os.path.exists(cache_hash):
+            with open(cache_hash) as f:
+                if f.read().strip() == current_hash:
+                    self.question_embeddings = np.load(cache_emb)
+                    return  # Cache hit — skip encoding
+
+        # Cache miss — encode and save
+        self.question_embeddings = self.embedder.encode(
+            self.questions, show_progress_bar=False
+        )
+        np.save(cache_emb, self.question_embeddings)
+        with open(cache_hash, "w") as f:
+            f.write(current_hash)
+
+    # ── Retrieval ─────────────────────────────────────────────────────────────
 
     def retrieve_context(self, query):
-        """3. Simple Retrieval: Finds the most similar question from the dataset."""
-        query_embedding = self.embedder.encode([query])
-        similarities = cosine_similarity(query_embedding, self.question_embeddings)[0]
-        best_match_index = np.argmax(similarities)
-        
-        # If the highest similarity is too low, we assume no relevant info found
-        if similarities[best_match_index] > 0.4:
-            return self.dataset[best_match_index]
-        return None
+        emb  = self.embedder.encode([query])
+        sims = cosine_similarity(emb, self.question_embeddings)[0]
+        idx  = int(np.argmax(sims))
+        return self.dataset[idx] if sims[idx] > 0.4 else None
 
-    def get_answer(self, query, context_item):
-        """4. LLM Response: Passes retrieved text and query to LLM."""
-        if context_item:
-            prompt = f"""
-            You are a helpful banking chatbot. Answer the user's question using the provided context.
-            Make it sound natural and conversational.
-            
-            Context: {context_item['answer']}
-            User Question: {query}
-            """
-        else:
-            prompt = f"""
-            You are a helpful banking chatbot. The user asked a question that is not in your primary database.
-            Answer the user's question using your general banking knowledge.
-            
-            User Question: {query}
-            """
-        
+    # ── LLM — single combined call ────────────────────────────────────────────
+
+    def get_response(self, query, context_item=None):
+        """Returns (answer: str, suggestions: list[str]) in one API call."""
+        ctx_block = (
+            f"Relevant knowledge: {context_item['answer']}"
+            if context_item
+            else "No exact match found — draw on general banking expertise."
+        )
+
+        prompt = f"""You are Astura, a professional yet warm banking assistant.
+{ctx_block}
+
+Customer question: {query}
+
+Reply in this exact JSON format (no markdown fences, no extra text):
+{{
+  "answer": "2-3 sentence conversational but professional response",
+  "suggestions": ["Follow-up question 1", "Follow-up question 2", "Follow-up question 3"]
+}}"""
+
         try:
-            response = llm.generate_content(prompt)
-            return response.text.strip()
+            raw = self.llm.generate_content(prompt).text.strip()
+
+            # Strategy 1: strip markdown fences
+            if "```" in raw:
+                import re as _re
+                raw = _re.sub(r"```(?:json)?", "", raw).strip()
+
+            # Strategy 2: extract just the JSON object if there's surrounding text
+            import re as _re
+            json_match = _re.search(r"\{[\s\S]*\}", raw)
+            if json_match:
+                raw = json_match.group(0)
+
+            data        = json.loads(raw)
+            answer      = data.get("answer", "I'm sorry, I couldn't generate a response.")
+            suggestions = [s.strip() for s in data.get("suggestions", [])[:3]]
+            return answer, suggestions
+
         except Exception as e:
-            return f"Error connecting to LLM: {str(e)}"
+            # Last resort: try asking for just the answer without JSON
+            try:
+                fallback_prompt = f"Answer this banking question in 2-3 sentences: {query}"
+                ans = self.llm.generate_content(fallback_prompt).text.strip()
+                return ans, [
+                    "What documents do I need to open an account?",
+                    "How do I check my account balance?",
+                    "What is a Fixed Deposit?",
+                ]
+            except Exception:
+                return (
+                    "I'm having a little trouble connecting right now. Please try again in a moment.",
+                    [
+                        "What documents do I need to open an account?",
+                        "How do I check my account balance?",
+                        "What is a Fixed Deposit?",
+                    ],
+                )
 
-    def get_recommendations(self, query, answer):
-        """Suggests 3 follow-up questions."""
-        prompt = f"""
-        User asked: {query}
-        Bot answered: {answer}
-        
-        Suggest exactly 3 short follow-up questions a banking customer might ask next.
-        Return ONLY the questions, one per line, with no bullets or numbers.
-        """
-        try:
-            raw = llm.generate_content(prompt).text.strip()
-            questions = [line.strip() for line in raw.splitlines() if line.strip()]
-            # Clean up leading dash or bullet if present
-            questions = [q.lstrip("•- ") for q in questions]
-            return questions[:3]
-        except Exception:
-            return [
-                "What documents do I need?",
-                "How do I check my balance?",
-                "What is a fixed deposit?"
-            ]
+    # ── CLI fallback ──────────────────────────────────────────────────────────
 
     def chat_loop(self):
-        """5. Interface: Simple command-line chatbot loop."""
+        print("\n— Astura Banking Assistant —\nType 'exit' to quit.\n")
         while True:
             try:
-                user_input = input("\nUser: ").strip()
+                user_input = input("You: ").strip()
                 if not user_input:
                     continue
-                if user_input.lower() in ['exit', 'quit']:
-                    print("Bot: Goodbye!")
+                if user_input.lower() in ("exit", "quit"):
+                    print("Astura: Goodbye! Have a great day.")
                     break
-
-                # Step 1: Retrieve relevant information
-                context = self.retrieve_context(user_input)
-                
-                # Step 2: Generate LLM Response
-                answer = self.get_answer(user_input, context)
-                
-                # Step 3: Print Response
-                print(f"Bot: {answer}")
-
+                ctx    = self.retrieve_context(user_input)
+                answer, _ = self.get_response(user_input, ctx)
+                print(f"Astura: {answer}\n")
             except KeyboardInterrupt:
-                print("\nBot: Goodbye!")
+                print("\nAstura: Goodbye!")
                 break
-            except Exception as e:
-                print(f"An error occurred: {e}")
+
 
 if __name__ == "__main__":
     bot = BankingChatbot()
