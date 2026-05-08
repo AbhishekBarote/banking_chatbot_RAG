@@ -1,8 +1,3 @@
-"""
-Astura — Private Banking Assistant  (Premium UI v3)
-Run: streamlit run app.py
-"""
-
 import html as html_lib
 import base64
 import os
@@ -17,7 +12,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Hero image (base64 embed) ─────────────────────────────────────────────────
 def _img_b64(path):
     try:
         with open(path, "rb") as f:
@@ -32,7 +26,6 @@ _hero_path = os.path.join(
 _hero_b64 = _img_b64(_hero_path)
 _hero_src  = f"data:image/png;base64,{_hero_b64}" if _hero_b64 else ""
 
-# ── CSS + Material Symbols ────────────────────────────────────────────────────
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
@@ -158,8 +151,6 @@ html,body,.stApp{background:var(--bg)!important;font-family:'Inter',system-ui,sa
 </style>
 """, unsafe_allow_html=True)
 
-
-# ── Load chatbot ──────────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
 def load_chatbot():
     return BankingChatbot()
@@ -167,12 +158,9 @@ def load_chatbot():
 with st.spinner(""):
     bot = load_chatbot()
 
-# ── Session state ─────────────────────────────────────────────────────────────
 if "messages"    not in st.session_state: st.session_state.messages    = []
 if "suggestions" not in st.session_state: st.session_state.suggestions = []
 
-
-# ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
     <div class="astura-nav">
@@ -215,8 +203,6 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-
-# ── Header ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="astura-header">
   <div class="header-brand">
@@ -229,11 +215,8 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-
-# ── Render chat ───────────────────────────────────────────────────────────────
 def _bot_html(content: str, time_str: str) -> str:
     safe = html_lib.escape(content).replace("\n", "<br>")
-    # Bold **text** → <strong>
     import re
     safe = re.sub(r"\*\*(.+?)\*\*", r'<strong>\1</strong>', safe)
     return f"""
@@ -256,8 +239,6 @@ def _user_html(content: str, time_str: str) -> str:
       <span class="msg-time">{time_str}</span>
     </div>"""
 
-
-# Welcome card
 if not st.session_state.messages:
     img_html = (
         f'<div class="welcome-card-img"><img src="{_hero_src}" alt="Banking Chatbot"/></div>'
@@ -285,8 +266,6 @@ else:
     st.markdown(f'<div class="chat-canvas"><div class="chat-history">{"".join(rows)}</div></div>',
                 unsafe_allow_html=True)
 
-
-# ── Suggestion chips ──────────────────────────────────────────────────────────
 def _fire(q: str):
     t = datetime.now().strftime("%I:%M %p")
     ctx    = bot.retrieve_context(q)
@@ -307,7 +286,6 @@ if st.session_state.suggestions:
                 _fire(sug)
                 st.rerun()
 
-# Quick-topics row on first load
 if not st.session_state.messages:
     quick = ["What is KYC?", "Open a savings account", "What is a Fixed Deposit?",
              "How to check my balance?", "Credit card basics"]
@@ -323,14 +301,11 @@ if not st.session_state.messages:
 st.markdown('<p class="footer-note">Encrypted end-to-end · Astura Security Standard</p>',
             unsafe_allow_html=True)
 
-
-# ── Chat input ────────────────────────────────────────────────────────────────
 if user_input := st.chat_input("Inquire about your portfolio or security…"):
     t = datetime.now().strftime("%I:%M %p")
     st.session_state.messages.append({"role": "user", "content": user_input, "time": t})
     st.session_state.suggestions = []
 
-    # Thinking indicator
     ph = st.empty()
     ph.markdown("""
     <div class="chat-canvas">
