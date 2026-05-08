@@ -1,8 +1,16 @@
-# Astura - Basic Banking Chatbot
+# Basic Banking Chatbot
 
-This repository contains the source code for the **AI Internship Assignment: Basic Banking Chatbot using LLM and Embeddings**.
+This is a simple AI-powered banking assistant built as part of an internship assignment.  
+It uses embeddings to search through banking-related information and an LLM to generate natural, conversational answers.
 
-Astura is an AI-powered banking assistant that retrieves relevant information from a specialized banking dataset and uses a Large Language Model (LLM) to generate smooth, human-like responses.
+The chatbot can answer common banking questions such as:
+- What is KYC?
+- How to open a bank account
+- Required documents for verification
+- Basic banking procedures and services
+
+It combines semantic search with generative AI so responses feel more helpful and human instead of just returning fixed text.
+
 
 
 ## 🛠️ Tech Stack
@@ -16,8 +24,8 @@ Astura is an AI-powered banking assistant that retrieves relevant information fr
 
 ### 1. Clone the repository and navigate to the project directory:
 ```bash
-# git clone <your-repo-url>
-cd Atura
+# git clone <https://github.com/AbhishekBarote/banking_chatbot_RAG.git>
+cd (your folder)
 ```
 
 ### 2. Install Dependencies:
