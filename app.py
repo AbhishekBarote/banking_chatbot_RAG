@@ -269,7 +269,11 @@ else:
 def _fire(q: str):
     t = datetime.now().strftime("%I:%M %p")
     ctx    = bot.retrieve_context(q)
-    ans, s = bot.get_response(q, ctx)
+    try:
+        ans, s = bot.get_response(q, ctx)
+    except Exception as e:
+        st.error(f"Error: {e}")
+        ans, s = "Error occurred", []
     st.session_state.messages.append({"role": "user",      "content": q,   "time": t})
     st.session_state.messages.append({"role": "assistant", "content": ans, "time": t})
     st.session_state.suggestions = s

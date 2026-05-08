@@ -2,7 +2,7 @@ import json
 import hashlib
 import html as html_lib
 import numpy as np
-import google.generativeai as genai
+from groq import Groq
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import warnings
@@ -12,11 +12,9 @@ from dotenv import load_dotenv
 warnings.filterwarnings("ignore")
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY not found. Please check your .env file.")
-
-genai.configure(api_key=GEMINI_API_KEY)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+if not GROQ_API_KEY:
+    raise ValueError("GROQ_API_KEY not found. Please check your .env file.")
 
 
 class BankingChatbot:
@@ -24,7 +22,7 @@ class BankingChatbot:
         base = os.path.dirname(os.path.abspath(__file__))
         data_path = os.path.join(base, data_file)
 
-        self.llm = genai.GenerativeModel("gemini-2.5-flash")
+        self.client = Groq(api_key=GROQ_API_KEY)
         self._load_dataset(data_path)
 
         self.embedder = SentenceTransformer("all-MiniLM-L6-v2")
@@ -74,23 +72,19 @@ class BankingChatbot:
 
 Customer question: {query}
 
-Reply in this exact JSON format (no markdown fences, no extra text):
+Reply in this exact JSON format:
 {{
   "answer": "2-3 sentence conversational but professional response",
   "suggestions": ["Follow-up question 1", "Follow-up question 2", "Follow-up question 3"]
 }}"""
 
         try:
-            raw = self.llm.generate_content(prompt).text.strip()
-
-            if "```" in raw:
-                import re as _re
-                raw = _re.sub(r"```(?:json)?", "", raw).strip()
-
-            import re as _re
-            json_match = _re.search(r"\{[\s\S]*\}", raw)
-            if json_match:
-                raw = json_match.group(0)
+            completion = self.client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+            )
+            raw = completion.choices[0].message.content
 
             data        = json.loads(raw)
             answer      = data.get("answer", "I'm sorry, I couldn't generate a response.")
@@ -98,9 +92,14 @@ Reply in this exact JSON format (no markdown fences, no extra text):
             return answer, suggestions
 
         except Exception as e:
+            print(f"Groq API Error: {e}")
             try:
                 fallback_prompt = f"Answer this banking question in 2-3 sentences: {query}"
-                ans = self.llm.generate_content(fallback_prompt).text.strip()
+                completion = self.client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[{"role": "user", "content": fallback_prompt}],
+                )
+                ans = completion.choices[0].message.content.strip()
                 return ans, [
                     "What documents do I need to open an account?",
                     "How do I check my account balance?",
