@@ -1,6 +1,6 @@
 # Basic Banking Chatbot
 
-This is a simple AI-powered banking assistant built as part of an internship assignment.  
+This is a simple AI-powered banking assistant 
 It uses embeddings to search through banking-related information and an LLM to generate natural, conversational answers.
 
 The chatbot can answer common banking questions such as:
